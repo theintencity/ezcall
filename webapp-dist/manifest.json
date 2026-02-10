@@ -1,0 +1,28 @@
+{
+    "manifest_version": 3,
+    "version": "1.0",
+    "short_name": "EzCall",
+    "name": "EzCall by Kundan Singh",
+    "description": "Lightweight call signaling and peer-to-peer control of WebRTC video conferencing.",
+    "permissions": [
+        "notifications", "storage"
+    ],
+    "host_permissions": [
+        "https://ezinteract.kundansingh.com/*", "https://ezinteract.com/*"
+    ],
+    "action": {
+        "default_icon": "assets/icon48-white.png",
+        "default_popup": "popup.html"
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "icons": {
+        "16": "assets/icon16.png",
+        "48": "assets/icon48.png",
+        "128": "assets/icon128.png"
+    },
+    "content_security_policy": {
+        "extension_pages": "script-src 'self';"
+    }
+}
