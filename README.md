@@ -51,7 +51,9 @@ to get access password, and signin auth-token.
 
 If you want to use the client in browser extension, enable developer mode in your
 Chrome browser, and drag-drop the `chrome-extension.zip` file on the
-extensions page to install. If you want to use the web app or installed 
+extensions page to install. For using your Firebase cloud messaging/service
+account, you will need to add your own data for this to work.
+If you want to use the web app or installed 
 app (progressive web app), just visit the main webapp, from Chrome browser
 on Windows, Mac, or Android.
 
