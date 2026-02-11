@@ -40,22 +40,27 @@ Please contact the software owner, or join the discussion group mentioned below,
 to get started with this project. There are many ways to use this software.
 
 If you host this on your own website, then use your own Firebase cloud 
-messaging/service account, and update index.php with the details. Make sure
-that `index.php` is available at `/contacts` and the main web app of
-`webapp-dist` is available at `/ezcall` on your website domain. Ensure 
-that your database file, `contacts.db`, is not accessible from the 
-web. 
+messaging/service account, and update the SQLlite database `contacts.db`
+with the encrypted `config`, `vapidkey` and `privatekey` for the `namespace`
+you plan to use, and set that as default. Please see `index.php` for 
+details on the database schema.
+
+Make sure that `index.php` is available at `/contacts` and the main 
+web app of `webapp-dist` is available at `/ezcall` on your website
+domain. Ensure  that your database file, `contacts.db`, is not accessible
+from the web.
 
 If you want to use our hosted webapp, please get in touch with the owner, 
-to get access password, and signin auth-token.
+to get access password, and signin auth-token. If you would like to create
+your own namespace on our hosted webcapp, and manage your own users' signups,
+please get in touch with the owner.
 
-If you want to use the client in browser extension, enable developer mode in your
-Chrome browser, and drag-drop the `chrome-extension.zip` file on the
-extensions page to install. For using your Firebase cloud messaging/service
-account, you will need to add your own data for this to work.
-If you want to use the web app or installed 
-app (progressive web app), just visit the main webapp, from Chrome browser
-on Windows, Mac, or Android.
+If you want to use the client in browser extension, enable developer mode in 
+your Chrome browser, and drag-drop the `chrome-extension.zip` file on the
+extensions page to install. Once you have the auth token, use that to login,
+or use the app in serverless or email mode that does not require login.
+If you want to use the web app or installed app (progressive web app), just
+visit the main webapp, from Chrome browser on Windows, Mac, or Android.
 
 
 # License, copyright and contributions
