@@ -19,8 +19,15 @@ function initialize() {
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
     $create_table_sql = <<<EOF
+CREATE TABLE IF NOT EXISTS namespaces (
+    name TEXT PRIMARY KEY,
+    config TEXT NOT NULL,
+    vapidkey TEXT NOT NULL,
+    privatekey TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS contacts (
     token TEXT PRIMARY KEY, email TEXT NOT NULL, created TEXT NOT NULL,
+    namespace TEXT NOT NULL DEFAULT "ezinteract",
     contact TEXT, expires TEXT
 );
 EOF;
@@ -42,11 +49,25 @@ function newtoken($pdo, $email) {
     $stm->execute([$token, $email]);
 }
 
-function getemail($pdo, $token) {
-    $stm = $pdo->query('SELECT email FROM contacts WHERE token=?');
+function getnamespaceemail($pdo, $token) {
+    $stm = $pdo->query('SELECT namespace, email FROM contacts WHERE token=?');
     $stm->execute([$token]);
     $row = $stm->fetch(PDO::FETCH_ASSOC);
-    return $row ? $row["email"] : NULL;
+    return $row ? array($row["namespace"], $row["email"]) : array(NULL, NULL);
+}
+
+function getconfigvapidkey($pdo, $namespace) {
+    $stm = $pdo->query('SELECT config, vapidkey FROM namespaces WHERE name=?');
+    $stm->execute([$namespace]);
+    $row = $stm->fetch(PDO::FETCH_ASSOC);
+    return $row ? array($row["config"], $row["vapidkey"]) : array(NULL, NULL);
+}
+
+function getprivatekey($pdo, $namespace) {
+    $stm = $pdo->query('SELECT privatekey FROM namespaces WHERE name=?');
+    $stm->execute([$namespace]);
+    $row = $stm->fetch(PDO::FETCH_ASSOC);
+    return $row ? $row["privatekey"] : NULL;
 }
 
 function setcontact($pdo, $token, $contact) {
@@ -82,51 +103,25 @@ function getcontacts($pdo, $email, $instance=null) {
 
 
 function rc4($key, $str) {
-    $s = array();
-    for ($i = 0; $i < 256; $i++) {
-        $s[$i] = $i;
-    }
+    $s = array(); for ($i = 0; $i < 256; $i++) { $s[$i] = $i; }
     $j = 0;
     for ($i = 0; $i < 256; $i++) {
         $j = ($j + $s[$i] + ord($key[$i % strlen($key)])) % 256;
-        $x = $s[$i];
-        $s[$i] = $s[$j];
-        $s[$j] = $x;
+        $x = $s[$i]; $s[$i] = $s[$j]; $s[$j] = $x;
     }
-    $i = 0;
-    $j = 0;
-    $res = '';
+    $i = 0; $j = 0; $res = '';
     for ($y = 0; $y < strlen($str); $y++) {
-        $i = ($i + 1) % 256;
-        $j = ($j + $s[$i]) % 256;
-        $x = $s[$i];
-        $s[$i] = $s[$j];
-        $s[$j] = $x;
+        $i = ($i + 1) % 256; $j = ($j + $s[$i]) % 256;
+        $x = $s[$i]; $s[$i] = $s[$j]; $s[$j] = $x;
         $res .= $str[$y] ^ chr($s[($s[$i] + $s[$j]) % 256]);
     }
     return $res;
 }
 
-function getToken($secret) {
-    // paste your FCM cloud messaging/service accounts's privatekey data below.
-    $privatekey = <<<EOT
-{
-    "type": "service_account",
-    "project_id": "...",
-    "private_key_id": "...",
-    "private_key": "...",
-    "client_email": "...",
-    "client_id": "...",
-    "auth_uri": "...",
-    "token_uri": "...",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "...",
-    "universe_domain": "..."
-    }
-EOT;
+function getToken($secret, $privatekey) {
+    $creds = rc4($secret, base64_decode($privatekey));
+    $creds = json_decode($creds, true);
 
-    $creds = json_decode($privatekey, true);
-    
     $private_key = $creds["private_key"]; // private_key of JSON file retrieved by creating Service Account
     $client_email = $creds["client_email"]; // client_email of JSON file retrieved by creating Service Account
     $scopes = ["https://www.googleapis.com/auth/firebase.messaging"]; // Sample scope
@@ -171,9 +166,9 @@ EOT;
     return $accessToken;
 }
 
-function sendto($target, $notification, $data) {
+function sendto($target, $notification, $data, $namespace, $privatekey) {
     $apiUrl = 'https://fcm.googleapis.com/v1/projects/ezinteract/messages:send';
-    $accessToken = getToken("ezinteract");
+    $accessToken = getToken($namespace, $privatekey);
 
     $headers = [
         'Authorization: Bearer ' . $accessToken,
@@ -236,13 +231,18 @@ $token = getBearerToken();
 if ($token) {
     try {
         $pdo = initialize();
-        $email = getemail($pdo, $token);
+        list($namespace, $email) = getnamespaceemail($pdo, $token);
         if (isset($email)) {
             $method = $_SERVER['REQUEST_METHOD'];
             if ($method === 'GET') {
-                header('Content-Type: application/json; charset=utf-8');
-                header("Access-Control-Allow-Origin: *");
-                echo json_encode([ "email" => $email ]);
+                list($config, $vapidkey) = getconfigvapidkey($pdo, $namespace);
+                if (!isset($config) || !isset($vapidkey)) {
+                    senderror(500, "Invalid config for namespace");
+                } else {
+                    header('Content-Type: application/json; charset=utf-8');
+                    header("Access-Control-Allow-Origin: *");
+                    echo json_encode([ "email" => $email, "namespace" => $namespace, "config" => $config, "vapidkey" => $vapidkey ]);
+                }
             } else if ($method === 'PUT' || $method == "POST") {
                 $raw_input = file_get_contents('php://input');
                 $content_type = $_SERVER['CONTENT_TYPE'] ?? '';
@@ -266,8 +266,11 @@ if ($token) {
                             if (!isset($data["data"])) {
                                 $data["data"] = [];
                             }
+                            $privatekey = getprivatekey($pdo, $namespace);
                             $row = getcontact($pdo, $token);
-                            if (!isset($row) || !isset($row["contact"])) {
+                            if (!isset($privatekey)) {
+                                senderror(500, "Invalid key for namespace");
+                            } else if (!isset($row) || !isset($row["contact"])) {
                                 senderror(403, "Sender is not logged in");
                             } else {
                                 $checksum = crc32($email . ":" . $token . ":" . $row["contact"]);
@@ -284,7 +287,7 @@ if ($token) {
                                     $data1["From"] = $email . "/" . $instance; // "from" is reserved, by "From" is not.
                                     $data1["To"] = $data["to"] . "/" . $instance1;
 
-                                    $response = sendto($row["contact"], $data["notification"] ?? null, $data1);
+                                    $response = sendto($row["contact"], $data["notification"] ?? null, $data1, $namespace, $privatekey);
                                     if (!isset($response["error"])) {
                                         $success ++;
                                     }
